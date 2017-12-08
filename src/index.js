@@ -6,6 +6,8 @@ const each = require('async/each')
 const series = require('async/series')
 const map = require('async/map')
 const once = require('once')
+const EventEmitter = require('events')
+
 
 const WantManager = require('./want-manager')
 const Network = require('./network')
@@ -15,7 +17,7 @@ const logger = require('./utils').logger
 const Stats = require('./stats')
 
 const defaultOptions = {
-  statsEnabled: false,
+  statsEnabled: true,
   statsComputeThrottleTimeout: 1000,
   statsComputeThrottleMaxQueueSize: 1000
 }
@@ -28,7 +30,8 @@ const statsKeys = [
   'dataSent',
   'providesBufferLength',
   'wantListLength',
-  'peerCount'
+  'peerCount',
+  'wantListSize'
 ]
 
 /**
@@ -42,6 +45,10 @@ class Bitswap {
   constructor (libp2p, blockstore, options) {
     this._libp2p = libp2p
     this._log = logger(this.peerInfo.id)
+
+    this.statEmitter = new EventEmitter()
+
+    this._peerLog = []
 
     this._options = Object.assign({}, defaultOptions, options)
 
@@ -102,7 +109,18 @@ class Bitswap {
   }
 
   _handleReceivedBlock (peerId, block, callback) {
-    this._log('received block')
+    this._log('received block:', block.cid.toBaseEncodedString(), 'from:', peerId.toB58String())
+    const fileID = block.cid.toBaseEncodedString();
+    const fromPeerID = peerId.toB58String();
+
+    const peerLogObject = {
+      ownPeerID: this.peerInfo.id.toB58String(),
+      fromPeerID,
+      fileID,
+      time: Date.now()
+    };
+
+    this.statEmitter.emit('peerLog', peerLogObject)
 
     waterfall([
       (cb) => this.blockstore.has(block.cid, cb),
